@@ -7,15 +7,15 @@ import (
 	"github.com/DisasterWoman/wallet-service/internal/repository"
 )
 
-type WalletService struct {
-	repo *repository.PostgresRepository
+type walletService struct {
+	repo repository.Repository
 }
 
-func NewWalletService(repo *repository.PostgresRepository) *WalletService {
-	return &WalletService{repo: repo}
+func NewWalletService(repo repository.Repository) WalletService {  
+	return &walletService{repo: repo}
 }
 
-func (s *WalletService) UpdateBalance(ctx context.Context, req *models.OperationRequest) error {
+func (s *walletService) UpdateBalance(ctx context.Context, req *models.OperationRequest) error {
 	if err := req.Validate(); err != nil {
 		return err
 	}
@@ -28,6 +28,6 @@ func (s *WalletService) UpdateBalance(ctx context.Context, req *models.Operation
 	return s.repo.UpdateBalance(ctx, req.WalletID, amount)
 }
 
-func (s *WalletService) GetBalance(ctx context.Context, walletID uuid.UUID) (int64, error) {
+func (s *walletService) GetBalance(ctx context.Context, walletID uuid.UUID) (int64, error) {
 	return s.repo.GetBalance(ctx, walletID)
 }
