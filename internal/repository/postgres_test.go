@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,9 +17,8 @@ import (
 
 type PostgresRepositoryTestSuite struct {
 	suite.Suite
-	db         *sql.DB
-	repo       *PostgresRepository
-	testWallet uuid.UUID
+	db   *sql.DB
+	repo *PostgresRepository
 }
 
 func (suite *PostgresRepositoryTestSuite) SetupSuite() {
@@ -30,27 +30,39 @@ func (suite *PostgresRepositoryTestSuite) SetupSuite() {
 
 	suite.db = db
 	suite.repo = NewPostgresRepository(db)
-	suite.testWallet = uuid.New()
 
-	_, err = suite.db.Exec(
-		"INSERT INTO wallets (id, balance) VALUES ($1, $2)",
-		suite.testWallet, 1000,
-	)
+	// Ожидаем подключение к БД
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	if err := db.PingContext(ctx); err != nil {
+		suite.T().Fatalf("Failed to connect to database: %v", err)
+	}
+}
+
+func (suite *PostgresRepositoryTestSuite) TearDownSuite() {
+	if suite.db != nil {
+		suite.db.Close()
+	}
+}
+
+func (suite *PostgresRepositoryTestSuite) SetupTest() {
+	// Очищаем таблицу перед каждым тестом
+	_, err := suite.db.Exec("DELETE FROM wallets")
 	if err != nil {
 		suite.T().Fatal(err)
 	}
 }
 
-func (suite *PostgresRepositoryTestSuite) TearDownSuite() {
-	suite.db.Exec("DELETE FROM wallets WHERE id = $1", suite.testWallet)
-	suite.db.Close()
-}
+func (suite *PostgresRepositoryTestSuite) TestGetBalance_Success() {
+	walletID := uuid.New()
+	_, err := suite.db.Exec("INSERT INTO wallets (id, balance) VALUES ($1, $2)", walletID, 1500)
+	assert.NoError(suite.T(), err)
 
-func (suite *PostgresRepositoryTestSuite) TestGetBalance() {
-	balance, err := suite.repo.GetBalance(context.Background(), suite.testWallet)
+	balance, err := suite.repo.GetBalance(context.Background(), walletID)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), int64(1000), balance)
+	assert.Equal(suite.T(), int64(1500), balance)
 }
 
 func (suite *PostgresRepositoryTestSuite) TestGetBalance_WalletNotFound() {
@@ -63,53 +75,136 @@ func (suite *PostgresRepositoryTestSuite) TestGetBalance_WalletNotFound() {
 }
 
 func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_Deposit() {
-	err := suite.repo.UpdateBalance(context.Background(), suite.testWallet, 500)
+	walletID := uuid.New()
+	_, err := suite.db.Exec("INSERT INTO wallets (id, balance) VALUES ($1, $2)", walletID, 1000)
+	assert.NoError(suite.T(), err)
+
+	err = suite.repo.UpdateBalance(context.Background(), walletID, 500)
 
 	assert.NoError(suite.T(), err)
 
-	balance, _ := suite.repo.GetBalance(context.Background(), suite.testWallet)
+	// Проверяем что баланс обновился
+	var balance int64
+	err = suite.db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance)
+	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), int64(1500), balance)
 }
 
 func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_Withdraw() {
-	err := suite.repo.UpdateBalance(context.Background(), suite.testWallet, -300)
+	walletID := uuid.New()
+	_, err := suite.db.Exec("INSERT INTO wallets (id, balance) VALUES ($1, $2)", walletID, 1000)
+	assert.NoError(suite.T(), err)
+
+	err = suite.repo.UpdateBalance(context.Background(), walletID, -300)
 
 	assert.NoError(suite.T(), err)
 
-	balance, _ := suite.repo.GetBalance(context.Background(), suite.testWallet)
+	// Проверяем что баланс обновился
+	var balance int64
+	err = suite.db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance)
+	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), int64(700), balance)
 }
 
 func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_InsufficientFunds() {
-	err := suite.repo.UpdateBalance(context.Background(), suite.testWallet, -2000)
+	walletID := uuid.New()
+	_, err := suite.db.Exec("INSERT INTO wallets (id, balance) VALUES ($1, $2)", walletID, 500)
+	assert.NoError(suite.T(), err)
+
+	err = suite.repo.UpdateBalance(context.Background(), walletID, -1000)
 
 	assert.Error(suite.T(), err)
 	assert.Equal(suite.T(), models.ErrInsufficientFunds, err)
 
-	balance, _ := suite.repo.GetBalance(context.Background(), suite.testWallet)
-	assert.Equal(suite.T(), int64(1000), balance)
+	// Проверяем что баланс не изменился
+	var balance int64
+	err = suite.db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), int64(500), balance)
+}
+
+func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_WalletNotFound() {
+	nonExistentWallet := uuid.New()
+	err := suite.repo.UpdateBalance(context.Background(), nonExistentWallet, 1000)
+
+	assert.Error(suite.T(), err)
+	assert.Equal(suite.T(), ErrWalletNotFound, err)
 }
 
 func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_Concurrent() {
+	walletID := uuid.New()
+	_, err := suite.db.Exec("INSERT INTO wallets (id, balance) VALUES ($1, $2)", walletID, 1000)
+	assert.NoError(suite.T(), err)
+
+	// 10 concurrent deposits
 	iterations := 10
+	var wg sync.WaitGroup
 	errCh := make(chan error, iterations)
 
 	for i := 0; i < iterations; i++ {
-		go func(amount int64) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			errCh <- suite.repo.UpdateBalance(ctx, suite.testWallet, amount)
-		}(100) // Все пополнения на 100
+			errCh <- suite.repo.UpdateBalance(ctx, walletID, 100)
+		}()
 	}
 
-	for i := 0; i < iterations; i++ {
-		err := <-errCh
+	wg.Wait()
+	close(errCh)
+
+	// Проверяем что все операции завершились без ошибок
+	for err := range errCh {
 		assert.NoError(suite.T(), err)
 	}
 
-	balance, err := suite.repo.GetBalance(context.Background(), suite.testWallet)
+	// Проверяем итоговый баланс (1000 + 10*100 = 2000)
+	var balance int64
+	err = suite.db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), int64(2000), balance)
+}
+
+func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_ConcurrentMixed() {
+	walletID := uuid.New()
+	_, err := suite.db.Exec("INSERT INTO wallets (id, balance) VALUES ($1, $2)", walletID, 1000)
+	assert.NoError(suite.T(), err)
+
+	// 5 deposits и 3 withdrawals concurrently
+	var wg sync.WaitGroup
+	errCh := make(chan error, 8)
+
+	// Deposits
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- suite.repo.UpdateBalance(context.Background(), walletID, 200)
+		}()
+	}
+
+	// Withdrawals
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- suite.repo.UpdateBalance(context.Background(), walletID, -100)
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		assert.NoError(suite.T(), err)
+	}
+
+	// Проверяем итоговый баланс (1000 + 5*200 - 3*100 = 1000 + 1000 - 300 = 1700)
+	var balance int64
+	err = suite.db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), int64(1700), balance)
 }
 
 func TestPostgresRepositoryTestSuite(t *testing.T) {
