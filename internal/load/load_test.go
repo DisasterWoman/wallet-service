@@ -93,7 +93,6 @@ func TestWalletService_Load_1000RPS(t *testing.T) {
 	t.Logf("Actual RPS: %.2f", actualRPS)
 	t.Logf("Final Balance: %d", finalBalance)
 
-	// Проверяем что все запросы обработаны
 	assert.Equal(t, totalRequests, successCount, "All requests should be processed successfully")
 	assert.Equal(t, 0, errorCount, "No requests should fail")
 	assert.Equal(t, int64(totalRequests), finalBalance, "Final balance should equal total deposits")

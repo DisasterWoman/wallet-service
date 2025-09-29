@@ -31,7 +31,6 @@ func (suite *PostgresRepositoryTestSuite) SetupSuite() {
 	suite.db = db
 	suite.repo = NewPostgresRepository(db)
 
-	// Ожидаем подключение к БД
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	
@@ -47,7 +46,6 @@ func (suite *PostgresRepositoryTestSuite) TearDownSuite() {
 }
 
 func (suite *PostgresRepositoryTestSuite) SetupTest() {
-	// Очищаем таблицу перед каждым тестом
 	_, err := suite.db.Exec("DELETE FROM wallets")
 	if err != nil {
 		suite.T().Fatal(err)
@@ -83,7 +81,6 @@ func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_Deposit() {
 
 	assert.NoError(suite.T(), err)
 
-	// Проверяем что баланс обновился
 	var balance int64
 	err = suite.db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance)
 	assert.NoError(suite.T(), err)
@@ -99,7 +96,6 @@ func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_Withdraw() {
 
 	assert.NoError(suite.T(), err)
 
-	// Проверяем что баланс обновился
 	var balance int64
 	err = suite.db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance)
 	assert.NoError(suite.T(), err)
@@ -116,7 +112,6 @@ func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_InsufficientFunds() 
 	assert.Error(suite.T(), err)
 	assert.Equal(suite.T(), models.ErrInsufficientFunds, err)
 
-	// Проверяем что баланс не изменился
 	var balance int64
 	err = suite.db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance)
 	assert.NoError(suite.T(), err)
@@ -136,7 +131,6 @@ func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_Concurrent() {
 	_, err := suite.db.Exec("INSERT INTO wallets (id, balance) VALUES ($1, $2)", walletID, 1000)
 	assert.NoError(suite.T(), err)
 
-	// 10 concurrent deposits
 	iterations := 10
 	var wg sync.WaitGroup
 	errCh := make(chan error, iterations)
@@ -154,12 +148,10 @@ func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_Concurrent() {
 	wg.Wait()
 	close(errCh)
 
-	// Проверяем что все операции завершились без ошибок
 	for err := range errCh {
 		assert.NoError(suite.T(), err)
 	}
 
-	// Проверяем итоговый баланс (1000 + 10*100 = 2000)
 	var balance int64
 	err = suite.db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance)
 	assert.NoError(suite.T(), err)
@@ -171,11 +163,9 @@ func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_ConcurrentMixed() {
 	_, err := suite.db.Exec("INSERT INTO wallets (id, balance) VALUES ($1, $2)", walletID, 1000)
 	assert.NoError(suite.T(), err)
 
-	// 5 deposits и 3 withdrawals concurrently
 	var wg sync.WaitGroup
 	errCh := make(chan error, 8)
 
-	// Deposits
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
@@ -184,7 +174,6 @@ func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_ConcurrentMixed() {
 		}()
 	}
 
-	// Withdrawals
 	for i := 0; i < 3; i++ {
 		wg.Add(1)
 		go func() {
@@ -200,7 +189,6 @@ func (suite *PostgresRepositoryTestSuite) TestUpdateBalance_ConcurrentMixed() {
 		assert.NoError(suite.T(), err)
 	}
 
-	// Проверяем итоговый баланс (1000 + 5*200 - 3*100 = 1000 + 1000 - 300 = 1700)
 	var balance int64
 	err = suite.db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance)
 	assert.NoError(suite.T(), err)

@@ -95,18 +95,14 @@ func (suite *WalletAPITestSuite) TestWalletAPI_ConcurrentEndToEnd() {
 		}(int64((i + 1) * 100))
 	}
 
-	// Ждем завершения
 	time.Sleep(2 * time.Second)
 
-	// Проверяем что все операции успешны
 	assert.Equal(suite.T(), 10, successCount)
 	assert.Equal(suite.T(), 0, errorCount)
 
-	// Проверяем итоговый баланс
 	balance, err := suite.getBalance(walletID)
 	assert.NoError(suite.T(), err)
 	
-	// 10000 + (100+200+300+400+500+600+700+800+900+1000) = 10000 + 5500 = 15500
 	assert.Equal(suite.T(), int64(15500), balance)
 }
 
