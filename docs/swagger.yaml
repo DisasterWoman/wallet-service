@@ -1,0 +1,128 @@
+definitions:
+  models.OperationRequest:
+    properties:
+      amount:
+        type: integer
+      operationType:
+        $ref: '#/definitions/models.OperationType'
+      walletId:
+        type: string
+    type: object
+  models.OperationType:
+    enum:
+    - DEPOSIT
+    - WITHDRAW
+    type: string
+    x-enum-varnames:
+    - Deposit
+    - Withdraw
+host: localhost:8080
+info:
+  contact:
+    name: API Support
+    url: https://github.com/DisasterWoman/wallet-service
+  description: REST API для управления виртуальными кошельками с поддержкой конкурентных
+    операций
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: Wallet Service API
+  version: "1.0"
+paths:
+  /api/v1/wallet:
+    post:
+      consumes:
+      - application/json
+      description: Выполняет операцию пополнения или списания средств
+      parameters:
+      - description: Данные операции
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.OperationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Успешное выполнение операции
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Неверный запрос
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Конфликт (недостаточно средств или кошелек не найден)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Изменить баланс кошелька
+      tags:
+      - wallet
+  /api/v1/wallets/{walletId}:
+    get:
+      description: Возвращает текущий баланс указанного кошелька
+      parameters:
+      - description: UUID кошелька
+        in: path
+        name: walletId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Баланс кошелька
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Неверный UUID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Кошелек не найден
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить баланс кошелька
+      tags:
+      - wallet
+  /health:
+    get:
+      description: Возвращает статус работы сервиса
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Сервис работает
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Проверка здоровья сервиса
+      tags:
+      - health
+swagger: "2.0"

@@ -15,10 +15,31 @@ import (
 	"github.com/DisasterWoman/wallet-service/internal/handler"
 	"github.com/DisasterWoman/wallet-service/internal/repository"
 	"github.com/DisasterWoman/wallet-service/internal/service"
+	_ "github.com/DisasterWoman/wallet-service/docs" 
 	"github.com/gorilla/mux"
-	_ "github.com/lib/pq"
+	_"github.com/lib/pq"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
+// @title Wallet Service API
+// @version 1.0
+// @description REST API для управления виртуальными кошельками с поддержкой конкурентных операций
+
+// @contact.name API Support
+// @contact.url https://github.com/DisasterWoman/wallet-service
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @host localhost:8080
+
+// healthHandler обрабатывает запросы проверки здоровья
+// @Summary Проверка здоровья сервиса
+// @Description Возвращает статус работы сервиса
+// @Tags health
+// @Produce json
+// @Success 200 {object} map[string]string "Сервис работает"
+// @Router /health [get]
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -55,9 +76,13 @@ func main() {
 	walletHandler := handler.NewWalletHandler(walletService)
 
 	r := mux.NewRouter()
+	
 	r.HandleFunc("/health", healthHandler).Methods(http.MethodGet)                           
 	r.HandleFunc("/api/v1/wallet", walletHandler.UpdateWalletBalance).Methods(http.MethodPost)  
-	r.HandleFunc("/api/v1/wallets/{walletId}", walletHandler.GetWalletBalance).Methods(http.MethodGet)  
+	r.HandleFunc("/api/v1/wallets/{walletId}", walletHandler.GetWalletBalance).Methods(http.MethodGet)
+	
+	// Swagger documentation
+	r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
 	server := &http.Server{
 		Addr:    cfg.GetServerAddress(),
@@ -66,6 +91,7 @@ func main() {
 
 	go func() {
 		log.Printf("Server started on %s", cfg.GetServerAddress())
+		log.Printf("Swagger documentation available at: http://%s/swagger/index.html", cfg.GetServerAddress())
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}

@@ -19,6 +19,18 @@ func NewWalletHandler(service service.WalletService) *WalletHandler {
 	return &WalletHandler{service: service}
 }
 
+// UpdateWalletBalance обрабатывает запрос на изменение баланса
+// @Summary Изменить баланс кошелька
+// @Description Выполняет операцию пополнения или списания средств
+// @Tags wallet
+// @Accept json
+// @Produce json
+// @Param request body models.OperationRequest true "Данные операции"
+// @Success 200 {object} map[string]string "Успешное выполнение операции"
+// @Failure 400 {object} map[string]string "Неверный запрос"
+// @Failure 409 {object} map[string]string "Конфликт (недостаточно средств или кошелек не найден)"
+// @Failure 500 {object} map[string]string "Внутренняя ошибка сервера"
+// @Router /api/v1/wallet [post]
 func (h *WalletHandler) UpdateWalletBalance(w http.ResponseWriter, r *http.Request) {
 	var req models.OperationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -42,6 +54,17 @@ func (h *WalletHandler) UpdateWalletBalance(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
+// GetWalletBalance обрабатывает запрос на получение баланса
+// @Summary Получить баланс кошелька
+// @Description Возвращает текущий баланс указанного кошелька
+// @Tags wallet
+// @Produce json
+// @Param walletId path string true "UUID кошелька"
+// @Success 200 {object} map[string]int64 "Баланс кошелька"
+// @Failure 400 {object} map[string]string "Неверный UUID"
+// @Failure 404 {object} map[string]string "Кошелек не найден"
+// @Failure 500 {object} map[string]string "Внутренняя ошибка сервера"
+// @Router /api/v1/wallets/{walletId} [get]
 func (h *WalletHandler) GetWalletBalance(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	walletID, err := uuid.Parse(vars["walletId"])
